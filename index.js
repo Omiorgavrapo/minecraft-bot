@@ -3,7 +3,7 @@ const express = require('express');
 
 const HOST = '191.96.231.40';
 const PORT = 13585;
-const BOT_NAME = 'MeuBot';
+const BOT_NAME = 'Zé servizin';
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot rodando! ✅'));
