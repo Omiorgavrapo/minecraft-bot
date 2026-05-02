@@ -1,12 +1,9 @@
 const bedrock = require('bedrock-protocol');
 const express = require('express');
 
-// =============================
-// CONFIGURE AQUI ⬇️
-const HOST = 'newbedrock.enderman.cloud'; // endereço do seu servidor
-const PORT = 27225;                        // porta do servidor (padrão bedrock)
-const BOT_NAME = 'MeuBot';               // nome do bot
-// =============================
+const HOST = 'newbedrock.enderman.cloud'; // ✅ corrigido
+const PORT = 27225;
+const BOT_NAME = 'MeuBot';
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot está rodando! ✅'));
@@ -21,7 +18,8 @@ function conectarBot() {
       host: HOST,
       port: PORT,
       username: BOT_NAME,
-      offline: true // não precisa de conta Microsoft
+      offline: true,
+      skipPing: true
     });
   } catch (e) {
     console.log('❌ Erro ao criar cliente:', e.message);
@@ -33,20 +31,23 @@ function conectarBot() {
     console.log('✅ Bot entrou no servidor!');
   });
 
+  client.on('kick', (reason) => {
+    console.log('❌ Kickado:', JSON.stringify(reason));
+    setTimeout(conectarBot, 30000);
+  });
+
   client.on('error', (err) => {
     console.log('⚠️ Erro:', err.message);
   });
 
   client.on('close', () => {
-    console.log('🔄 Bot saiu. Reconectando em 1 minuto...');
-    setTimeout(conectarBot, 60 * 1000); // tenta de novo em 1 min
+    console.log('🔄 Reconectando em 1 minuto...');
+    setTimeout(conectarBot, 60 * 1000);
   });
 }
 
-// Tenta conectar ao iniciar
 conectarBot();
 
-// Reconecta a cada 50 minutos por segurança
 setInterval(() => {
-  console.log('🔁 Ciclo de reconexão ativo...');
+  console.log('🔁 Ciclo ativo...');
 }, 50 * 60 * 1000);
