@@ -1,8 +1,8 @@
 const bedrock = require('bedrock-protocol');
 const express = require('express');
 
-const HOST = 'newbedrock.enderman.cloud'; // ✅ corrigido
-const PORT = 27225;
+const HOST = '191.96.231.40';
+const PORT = 13585;
 const BOT_NAME = 'MeuBot';
 
 const app = express();
