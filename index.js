@@ -1,8 +1,8 @@
 const bedrock = require('bedrock-protocol');
 const express = require('express');
 
-const HOST = '191.96.231.40';
-const PORT = 13585;
+const HOST = '191.96.231.38';
+const PORT = 10495;
 const BOT_NAME = 'Zé servizin';
 
 const app = express();
