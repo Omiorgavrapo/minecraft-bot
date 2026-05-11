@@ -3,35 +3,32 @@ const express = require('express');
 
 const HOST = 'newbedrock.mcsh.io';
 const PORT = 19132;
-const BOT_NAME = 'zé servizin';
+const BOT_NAME = 'zé_servizin';
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot rodando! ✅'));
 app.listen(3000, () => console.log('HTTP ativo na porta 3000'));
 
 let client = null;
-let connecting = false;
+let reconnectTimer = null;
+let spawned = false;
 
-function desconectar() {
+function agendar(ms) {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(conectarBot, ms);
+}
+
+function fechar() {
+  spawned = false;
   if (client) {
     try { client.removeAllListeners(); client.close(); } catch(e) {}
     client = null;
   }
-  connecting = false;
 }
 
 function conectarBot() {
-  if (connecting) return;
-  desconectar();
-  connecting = true;
-
+  fechar();
   console.log(`🤖 Conectando em ${HOST}:${PORT}...`);
-
-  const timeout = setTimeout(() => {
-    console.log('⏱️ Timeout! Tentando de novo...');
-    desconectar();
-    setTimeout(conectarBot, 30000);
-  }, 15000);
 
   try {
     client = bedrock.createClient({
@@ -40,42 +37,58 @@ function conectarBot() {
       username: BOT_NAME,
       offline: true,
       skipPing: true,
-      version: '1.26.20'
+      version: '1.26.20',
+      authTitle: undefined,
+      identityPublicKey: undefined,
+      profilesFolder: false,
+      onMsaCode: undefined,
+      // XUID falso pra enganar o addon
+      extra: {
+        DeviceOS: 1,
+        PlatformUserId: '2535400000000001',
+        ThirdPartyName: BOT_NAME,
+        SelfSignedId: '00000000-0000-0000-0000-000000000001'
+      }
     });
   } catch (e) {
-    clearTimeout(timeout);
-    desconectar();
     console.log('❌ Erro:', e.message);
-    setTimeout(conectarBot, 30000);
+    agendar(60000);
     return;
   }
 
+  const timeout = setTimeout(() => {
+    console.log('⏱️ Timeout!');
+    fechar();
+    agendar(60000);
+  }, 20000);
+
   client.on('spawn', () => {
     clearTimeout(timeout);
-    connecting = false;
-    console.log('✅ Bot entrou no servidor!');
-    setInterval(() => console.log('🟢 Bot online...'), 60000);
+    spawned = true;
+    console.log('✅ Bot entrou e ficou!');
   });
 
   client.on('kick', (reason) => {
     clearTimeout(timeout);
     console.log('❌ Kickado:', JSON.stringify(reason));
-    desconectar();
-    setTimeout(conectarBot, 30000);
+    fechar();
+    agendar(60000);
   });
 
   client.on('error', (err) => {
     clearTimeout(timeout);
     console.log('⚠️ Erro:', err.message);
-    desconectar();
-    setTimeout(conectarBot, 30000);
+    fechar();
+    agendar(60000);
   });
 
   client.on('close', () => {
     clearTimeout(timeout);
-    console.log('🔄 Reconectando em 30s...');
-    desconectar();
-    setTimeout(conectarBot, 30000);
+    if (spawned) {
+      console.log('🔄 Caiu. Reconectando em 60s...');
+      fechar();
+      agendar(60000);
+    }
   });
 }
 
