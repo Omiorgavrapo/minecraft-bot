@@ -33,7 +33,7 @@ function conectarBot() {
       username: BOT_NAME,
       offline: true,
       skipPing: true,
-      version: '1.26.10'
+      version: '1.26.20'
     });
   } catch (e) {
     clearTimeout(timeout);
