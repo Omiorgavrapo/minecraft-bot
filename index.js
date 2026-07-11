@@ -1,13 +1,22 @@
 const bedrock = require('bedrock-protocol');
 const express = require('express');
 
-const HOST = 'tavernaredstone.mcsh.io';
-const PORT = 19132;
-const BOT_NAME = 'zé_servizin';
+// ====== CONFIG (pode sobrescrever via variáveis de ambiente no painel do MCServerHost) ======
+const HOST = process.env.MC_HOST || 'tavernaredstone.mcsh.io';
+const PORT = Number(process.env.MC_PORT || 19132);
+const BOT_NAME = process.env.MC_BOT_NAME || 'zé_servizin';
+// 'auto' deixa a bedrock-protocol negociar a versão automaticamente com o servidor.
+// Se der erro de versão incompatível, troque para a versão exata do seu servidor (ex: '1.21.130').
+const MC_VERSION = process.env.MC_VERSION || 'auto';
+const RECONNECT_MS = 60_000;
+const SPAWN_TIMEOUT_MS = 20_000;
 
+// ====== HTTP keep-alive (Render exige escutar na porta que ele define em process.env.PORT) ======
 const app = express();
+const HTTP_PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot rodando! ✅'));
-app.listen(3000, () => console.log('HTTP ativo na porta 3000'));
+app.get('/status', (req, res) => res.json({ spawned, host: HOST, port: PORT }));
+app.listen(HTTP_PORT, () => console.log(`HTTP ativo na porta ${HTTP_PORT}`));
 
 let client = null;
 let reconnectTimer = null;
@@ -21,14 +30,14 @@ function agendar(ms) {
 function fechar() {
   spawned = false;
   if (client) {
-    try { client.removeAllListeners(); client.close(); } catch(e) {}
+    try { client.removeAllListeners(); client.close(); } catch (e) {}
     client = null;
   }
 }
 
 function conectarBot() {
   fechar();
-  console.log(`🤖 Conectando em ${HOST}:${PORT}...`);
+  console.log(`🤖 Conectando em ${HOST}:${PORT} (versão: ${MC_VERSION})...`);
 
   try {
     client = bedrock.createClient({
@@ -37,12 +46,9 @@ function conectarBot() {
       username: BOT_NAME,
       offline: true,
       skipPing: true,
-      version: '1.26.20',
-      authTitle: undefined,
-      identityPublicKey: undefined,
+      version: MC_VERSION,
       profilesFolder: false,
-      onMsaCode: undefined,
-      // XUID falso pra enganar o addon
+      // XUID/plataforma falsos pra passar por addons que checam esses campos
       extra: {
         DeviceOS: 1,
         PlatformUserId: '2535400000000001',
@@ -51,16 +57,16 @@ function conectarBot() {
       }
     });
   } catch (e) {
-    console.log('❌ Erro:', e.message);
-    agendar(60000);
+    console.log('❌ Erro ao criar client:', e.message);
+    agendar(RECONNECT_MS);
     return;
   }
 
   const timeout = setTimeout(() => {
-    console.log('⏱️ Timeout!');
+    console.log('⏱️ Timeout esperando spawn!');
     fechar();
-    agendar(60000);
-  }, 20000);
+    agendar(RECONNECT_MS);
+  }, SPAWN_TIMEOUT_MS);
 
   client.on('spawn', () => {
     clearTimeout(timeout);
@@ -72,25 +78,41 @@ function conectarBot() {
     clearTimeout(timeout);
     console.log('❌ Kickado:', JSON.stringify(reason));
     fechar();
-    agendar(60000);
+    agendar(RECONNECT_MS);
   });
 
   client.on('error', (err) => {
     clearTimeout(timeout);
     console.log('⚠️ Erro:', err.message);
     fechar();
-    agendar(60000);
+    agendar(RECONNECT_MS);
   });
 
   client.on('close', () => {
     clearTimeout(timeout);
     if (spawned) {
       console.log('🔄 Caiu. Reconectando em 60s...');
-      fechar();
-      agendar(60000);
     }
+    fechar();
+    agendar(RECONNECT_MS);
   });
 }
 
+// ====== Checagem de versão nova da lib (avisa no log, não instala sozinho em runtime) ======
+async function checarAtualizacaoDaLib() {
+  try {
+    const pkg = require('bedrock-protocol/package.json');
+    const res = await fetch('https://registry.npmjs.org/bedrock-protocol/latest');
+    const data = await res.json();
+    if (data.version && data.version !== pkg.version) {
+      console.log(`ℹ️ Existe uma versão nova de bedrock-protocol: ${data.version} (você está usando ${pkg.version}). Rode "npm update bedrock-protocol" e reinicie o bot.`);
+    }
+  } catch (e) {
+    // sem internet pro registry, sem problema, só não avisa
+  }
+}
+
 conectarBot();
+checarAtualizacaoDaLib();
+setInterval(checarAtualizacaoDaLib, 24 * 60 * 60 * 1000); // checa 1x por dia
 setInterval(() => console.log('🔁 Ciclo ativo...'), 50 * 60 * 1000);
