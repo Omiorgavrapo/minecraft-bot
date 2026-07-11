@@ -5,9 +5,9 @@ const express = require('express');
 const HOST = process.env.MC_HOST || 'tavernaredstone.mcsh.io';
 const PORT = Number(process.env.MC_PORT || 19132);
 const BOT_NAME = process.env.MC_BOT_NAME || 'zé_servizin';
-// 'auto' deixa a bedrock-protocol negociar a versão automaticamente com o servidor.
-// Se der erro de versão incompatível, troque para a versão exata do seu servidor (ex: '1.21.130').
-const MC_VERSION = process.env.MC_VERSION || 'auto';
+// A lib não aceita 'auto' — precisa ser uma versão exata que ela suporta.
+// Troque pela versão que seu servidor realmente roda (veja a lista de "Supported versions" no log de deploy).
+const MC_VERSION = process.env.MC_VERSION || '1.26.30';
 const RECONNECT_MS = 60_000;
 const SPAWN_TIMEOUT_MS = 20_000;
 
