@@ -1,7 +1,7 @@
 const bedrock = require('bedrock-protocol');
 const express = require('express');
 
-const HOST = 'newbedrock.mcsh.io';
+const HOST = 'tavernaredstone.mcsh.io';
 const PORT = 19132;
 const BOT_NAME = 'zé_servizin';
 
