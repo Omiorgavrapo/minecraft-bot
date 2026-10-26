@@ -54,6 +54,35 @@ function conectar() {
 
   const limite = setTimeout(() => cair('Tempo esgotado esperando spawn.'), 60_000);
 
+  // createVanillaClient não conecta sozinho: precisa de connect() e das respostas básicas de entrada.
+  try {
+    client.connect();
+  } catch (e) {
+    clearTimeout(limite);
+    cair(`Falha ao conectar: ${e.message}`);
+    return;
+  }
+
+  client.on('network_stack_latency', (packet) => {
+    if (packet.needs_response) {
+      client.queue('network_stack_latency', { timestamp: packet.timestamp, needs_response: false });
+    }
+  });
+
+  const concluirResourcePacks = () => client.write('resource_pack_client_response', {
+    response_status: 'completed',
+    response_status_name: 'resourcepackstackfinished',
+    resourcepackids: []
+  });
+  client.once('resource_packs_info', () => {
+    concluirResourcePacks();
+    client.once('resource_pack_stack', concluirResourcePacks);
+    client.queue('client_cache_status', { enabled: false });
+    setTimeout(() => {
+      if (!fechado) client.queue('request_chunk_radius', { chunk_radius: 10 });
+    }, 500);
+  });
+
   client.on('spawn', () => {
     clearTimeout(limite);
     spawned = true;
