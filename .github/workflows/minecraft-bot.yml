@@ -22,8 +22,8 @@ jobs:
     timeout-minutes: 350
 
     env:
-      MC_HOST: quartetofantastico.mcsh.gg
-      MC_PORT: '19132'
+      MC_HOST: 135.148.171.110
+      MC_PORT: '10155'
       MC_BOT_NAME: ze_servizin
       PORT: '3000'
 
