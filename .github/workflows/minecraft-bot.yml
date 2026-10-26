@@ -26,6 +26,7 @@ jobs:
       MC_PORT: '10155'
       MC_BOT_NAME: ze_servizin
       PORT: '3000'
+      DEBUG: 'nethernet*,minecraft-protocol*'
 
     steps:
       - name: Baixar o repositório
