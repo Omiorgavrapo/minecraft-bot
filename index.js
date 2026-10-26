@@ -93,7 +93,7 @@ function conectarBot() {
       transport: 'raknet',
       followPort: false,
       skipPing: false,
-      connectTimeout: 20_000,
+      connectTimeout: 45_000,
       ...(MC_VERSION ? { version: MC_VERSION } : {})
     });
 
