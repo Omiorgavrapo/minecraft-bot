@@ -1,0 +1,50 @@
+name: Minecraft Bot
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Horários UTC: 00:17, 05:17, 10:17, 15:17 e 20:17.
+    - cron: '17 */5 * * *'
+
+permissions:
+  contents: read
+
+# Quando uma nova execução começar, cancela a anterior.
+concurrency:
+  group: minecraft-bot
+  cancel-in-progress: true
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+
+    # Limite de 5 horas e 50 minutos por execução.
+    timeout-minutes: 350
+
+    env:
+      MC_HOST: quartetofantastico.mcsh.gg
+      MC_PORT: '19132'
+      MC_BOT_NAME: ze_servizin
+      PORT: '3000'
+
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Instalar dependências
+        timeout-minutes: 15
+        run: npm install --omit=dev --no-audit --no-fund
+
+      - name: Verificar código
+        run: node --check index.js
+
+      - name: Executar bot
+        run: npm start
