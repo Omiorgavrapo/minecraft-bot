@@ -24,7 +24,7 @@ jobs:
     env:
       MC_HOST: 135.148.171.110
       MC_PORT: '10155'
-      MC_BOT_NAME: ze_servizin
+      MC_BOT_NAME: §6§l§kXX§6§lHerobrine§6§l§kXX
       PORT: '3000'
       DEBUG: 'nethernet*,minecraft-protocol*'
 
