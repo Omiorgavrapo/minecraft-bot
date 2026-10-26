@@ -1,118 +1,202 @@
+'use strict';
+
+const http = require('node:http');
 const bedrock = require('bedrock-protocol');
-const express = require('express');
 
-// ====== CONFIG (pode sobrescrever via variáveis de ambiente no painel do MCServerHost) ======
-const HOST = process.env.MC_HOST || 'tavernaredstone.mcsh.io';
-const PORT = Number(process.env.MC_PORT || 19132);
-const BOT_NAME = process.env.MC_BOT_NAME || 'zé_servizin';
-// A lib não aceita 'auto' — precisa ser uma versão exata que ela suporta.
-// Troque pela versão que seu servidor realmente roda (veja a lista de "Supported versions" no log de deploy).
-const MC_VERSION = process.env.MC_VERSION || '1.26.30';
-const RECONNECT_MS = 60_000;
-const SPAWN_TIMEOUT_MS = 20_000;
+function porta(nome, padrao) {
+  const valor = Number(process.env[nome] || padrao);
 
-// ====== HTTP keep-alive (Render exige escutar na porta que ele define em process.env.PORT) ======
-const app = express();
-const HTTP_PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Bot rodando! ✅'));
-app.get('/status', (req, res) => res.json({ spawned, host: HOST, port: PORT }));
-app.listen(HTTP_PORT, () => console.log(`HTTP ativo na porta ${HTTP_PORT}`));
+  if (!Number.isInteger(valor) || valor < 1 || valor > 65535) {
+    throw new Error(`${nome} precisa ser uma porta entre 1 e 65535.`);
+  }
 
-let client = null;
-let reconnectTimer = null;
-let spawned = false;
-
-function agendar(ms) {
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(conectarBot, ms);
+  return valor;
 }
 
-function fechar() {
-  spawned = false;
-  if (client) {
-    try { client.removeAllListeners(); client.close(); } catch (e) {}
-    client = null;
-  }
+// Configurações do Minecraft
+const HOST = process.env.MC_HOST || 'quartetofantastico.mcsh.gg';
+const PORT = porta('MC_PORT', 19132);
+const BOT_NAME = process.env.MC_BOT_NAME || 'ze_servizin';
+
+// Sem MC_VERSION, a biblioteca detecta o protocolo pelo ping.
+// Se precisar configurar manualmente, use uma versão exata, nunca "auto".
+const MC_VERSION = process.env.MC_VERSION?.trim();
+
+// Configurações da hospedagem
+const HTTP_PORT = porta('PORT', 3000);
+const RECONNECT_MS = 60_000;
+const SPAWN_TIMEOUT_MS = 60_000;
+
+let tentativaAtual = null;
+let reconnectTimer = null;
+let encerrando = false;
+let spawned = false;
+let ultimoErro = null;
+
+function agendar() {
+  if (encerrando || reconnectTimer) return;
+
+  console.log('Nova tentativa em 60 segundos.');
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    conectarBot();
+  }, RECONNECT_MS);
 }
 
 function conectarBot() {
-  fechar();
-  console.log(`🤖 Conectando em ${HOST}:${PORT} (versão: ${MC_VERSION})...`);
+  if (encerrando || tentativaAtual) return;
+
+  console.log(
+    `Conectando em ${HOST}:${PORT} ` +
+    `(${MC_VERSION || 'versão detectada pelo ping'})...`
+  );
+
+  const tentativa = {
+    client: null,
+    timeout: null,
+    finalizada: false
+  };
+
+  tentativaAtual = tentativa;
+
+  function finalizar(motivo) {
+    if (tentativa.finalizada) return;
+
+    tentativa.finalizada = true;
+    clearTimeout(tentativa.timeout);
+
+    tentativaAtual = null;
+    spawned = false;
+    ultimoErro = motivo;
+
+    console.log(motivo);
+
+    // Preserva os listeners internos e absorve eventos tardios.
+    try {
+      tentativa.client?.close();
+    } catch (erro) {
+      console.error('Erro ao fechar conexão:', erro.message);
+    }
+
+    agendar();
+  }
+
+  tentativa.finalizar = finalizar;
 
   try {
-    client = bedrock.createClient({
+    tentativa.client = bedrock.createClient({
       host: HOST,
       port: PORT,
       username: BOT_NAME,
       offline: true,
-      skipPing: true,
-      version: MC_VERSION,
-      profilesFolder: false,
-      // XUID/plataforma falsos pra passar por addons que checam esses campos
-      extra: {
-        DeviceOS: 1,
-        PlatformUserId: '2535400000000001',
-        ThirdPartyName: BOT_NAME,
-        SelfSignedId: '00000000-0000-0000-0000-000000000001'
-      }
+      transport: 'raknet',
+      followPort: false,
+      skipPing: false,
+      connectTimeout: 20_000,
+      ...(MC_VERSION ? { version: MC_VERSION } : {})
     });
-  } catch (e) {
-    console.log('❌ Erro ao criar client:', e.message);
-    agendar(RECONNECT_MS);
+
+    tentativa.client.on('spawn', () => {
+      if (tentativa.finalizada) return;
+
+      clearTimeout(tentativa.timeout);
+      spawned = true;
+      ultimoErro = null;
+
+      console.log('Bot entrou no servidor!');
+    });
+
+    tentativa.client.on('kick', (motivo) => {
+      const mensagem = typeof motivo === 'string'
+        ? motivo
+        : JSON.stringify(
+            motivo,
+            (_, valor) => typeof valor === 'bigint'
+              ? valor.toString()
+              : valor
+          );
+
+      finalizar(`Kick: ${mensagem}`);
+    });
+
+    tentativa.client.on('error', (erro) => {
+      finalizar(`Erro: ${erro.message}`);
+    });
+
+    tentativa.client.on('close', () => {
+      finalizar('Conexão encerrada.');
+    });
+
+    tentativa.timeout = setTimeout(() => {
+      finalizar('Tempo esgotado esperando spawn.');
+    }, SPAWN_TIMEOUT_MS);
+  } catch (erro) {
+    finalizar(`Falha ao criar cliente: ${erro.message}`);
+  }
+}
+
+// HTTP para Render e UptimeRobot
+const server = http.createServer((req, res) => {
+  const rota = req.url.split('?')[0];
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+  if (rota === '/' || rota === '/health') {
+    res.writeHead(encerrando ? 503 : 200);
+    res.end(JSON.stringify({
+      ok: !encerrando,
+      spawned
+    }));
     return;
   }
 
-  const timeout = setTimeout(() => {
-    console.log('⏱️ Timeout esperando spawn!');
-    fechar();
-    agendar(RECONNECT_MS);
-  }, SPAWN_TIMEOUT_MS);
-
-  client.on('spawn', () => {
-    clearTimeout(timeout);
-    spawned = true;
-    console.log('✅ Bot entrou e ficou!');
-  });
-
-  client.on('kick', (reason) => {
-    clearTimeout(timeout);
-    console.log('❌ Kickado:', JSON.stringify(reason));
-    fechar();
-    agendar(RECONNECT_MS);
-  });
-
-  client.on('error', (err) => {
-    clearTimeout(timeout);
-    console.log('⚠️ Erro:', err.message);
-    fechar();
-    agendar(RECONNECT_MS);
-  });
-
-  client.on('close', () => {
-    clearTimeout(timeout);
-    if (spawned) {
-      console.log('🔄 Caiu. Reconectando em 60s...');
-    }
-    fechar();
-    agendar(RECONNECT_MS);
-  });
-}
-
-// ====== Checagem de versão nova da lib (avisa no log, não instala sozinho em runtime) ======
-async function checarAtualizacaoDaLib() {
-  try {
-    const pkg = require('bedrock-protocol/package.json');
-    const res = await fetch('https://registry.npmjs.org/bedrock-protocol/latest');
-    const data = await res.json();
-    if (data.version && data.version !== pkg.version) {
-      console.log(`ℹ️ Existe uma versão nova de bedrock-protocol: ${data.version} (você está usando ${pkg.version}). Rode "npm update bedrock-protocol" e reinicie o bot.`);
-    }
-  } catch (e) {
-    // sem internet pro registry, sem problema, só não avisa
+  if (rota === '/status') {
+    res.writeHead(spawned ? 200 : 503);
+    res.end(JSON.stringify({
+      spawned,
+      host: HOST,
+      port: PORT,
+      ultimoErro
+    }));
+    return;
   }
+
+  res.writeHead(404);
+  res.end(JSON.stringify({
+    erro: 'Rota não encontrada'
+  }));
+});
+
+function encerrar() {
+  if (encerrando) return;
+
+  encerrando = true;
+  clearTimeout(reconnectTimer);
+
+  tentativaAtual?.finalizar('Encerrando o bot.');
+
+  const limite = setTimeout(() => {
+    process.exit(0);
+  }, 5_000);
+
+  limite.unref();
+
+  server.close(() => {
+    process.exit(0);
+  });
 }
 
-conectarBot();
-checarAtualizacaoDaLib();
-setInterval(checarAtualizacaoDaLib, 24 * 60 * 60 * 1000); // checa 1x por dia
-setInterval(() => console.log('🔁 Ciclo ativo...'), 50 * 60 * 1000);
+process.on('SIGTERM', encerrar);
+process.on('SIGINT', encerrar);
+
+server.on('error', (erro) => {
+  console.error('Falha no HTTP:', erro.message);
+  process.exit(1);
+});
+
+server.listen(HTTP_PORT, '0.0.0.0', () => {
+  console.log(`HTTP ativo na porta ${HTTP_PORT}. UptimeRobot: /health`);
+  conectarBot();
+});
